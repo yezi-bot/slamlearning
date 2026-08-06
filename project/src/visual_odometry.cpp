@@ -6,7 +6,7 @@
 
 #include "myslam/config.h"
 #include "myslam/visual_odometry.h"
-
+using namespace std;
 namespace myslam
 {
 
@@ -138,7 +138,7 @@ void VisualOdometry::setRef3DPoints()
 
 void VisualOdometry::poseEstimationPnP()
 {
-    vector<cv::Point3f> pts3d;
+    vector<cv::Point3f> pts3d;   //opencv的三维浮点坐标结构体
     vector<cv::Point2f> pts2d;
     
     for ( cv::DMatch m:feature_matches_ )
@@ -160,6 +160,50 @@ void VisualOdometry::poseEstimationPnP()
         SO3(rvec.at<double>(0,0), rvec.at<double>(1,0), rvec.at<double>(2,0)), 
         Vector3d( tvec.at<double>(0,0), tvec.at<double>(1,0), tvec.at<double>(2,0))
     );            //opencv的结果转为李代数，得到相机的相对位置变换
+
+
+    //使用g2o优化
+    typedf g2o::BlockSolver<g2o::BlockSolverTraits<6,2>> Block;   //BlockSolverTraits特征结构体，<位姿维度,观测残差维度>
+    auto linearSolver = g2o::make_unique<g2o::LinearSolverDense<Block::PoseMatrixType>>();
+    auto solver_ptr = g2o::make_unique<Block>(move(linearSolver));
+    auto solver = g2o::makeunique<g2o::OptimizationAlgorithmLevenberg>(move(solver_ptr));
+    g2o::SpareOptimizer optimizer;
+    optimizer.setAlgorithm(solver);
+
+    auto pose = g2o::make_unique<g2o::VertexSE3Expmap>();
+    pose->setId ( 0 );
+    pose->setEstimate ( g2o::SE3Quat (
+        T_c_r_estimated_.rotation_matrix(), 
+        T_c_r_estimated_.translation()
+    ) );
+    optimizer.addVertex ( pose );  //加入点
+
+    // 加入边
+    for ( int i=0; i<inliers.rows; i++ )
+    {
+        int index = inliers.at<int>(i,0);
+       
+        auto edge = make_unique<EdgeProjectXYZ2UVPoseOnly>();  //只优化pose的一条边
+        edge->setId(i);
+        edge->setVertex(0, pose);
+        edge->camera_ = curr_->camera_.get();
+        edge->point_ = Vector3d( pts3d[index].x, pts3d[index].y, pts3d[index].z );
+        edge->setMeasurement( Vector2d(pts2d[index].x, pts2d[index].y) );
+        edge->setInformation( Eigen::Matrix2d::Identity() );
+        optimizer.addEdge( edge );
+    }
+    
+    optimizer.initializeOptimization();
+    optimizer.optimize(10);
+    
+    T_c_r_estimated_ = SE3 (
+        pose->estimate().rotation(),
+        pose->estimate().translation()
+    );
+
+
+
+
 }
 
 //检查位姿是否够好
