@@ -20,11 +20,13 @@ class VisualOdometry
            Frame::Ptr ref_;    
            Frame::Ptr curr_;       
            cv::Ptr<cv::ORB> orb_;
-           vector<cv::Point3f> pts_3d_ref_;
+           
            vector<cv::Keypoint> keypoint_curr_;
            Mat descriptors_curr_;
-           Mat descriptors_ref_;
-           vector<cv::DMatch>   feature_matches_;
+           
+           cv::FlannBaseMatcher matcher_flann_;  //比暴力匹配更快
+           vector<MapPoint::Ptr> match_3dpts_;
+           vector<int> match_2dkp_index_;
 
            SE3 T_c_r_estimated_;       //估计的当前位姿
            int num_inliers_;
@@ -36,9 +38,10 @@ class VisualOdometry
            float match_ratio_;      //匹配率
            int max_num_lost_;
            int min_inliers_;
-
+         
            double key_frame_min_rot;   
-           double key_frame_min_trans;  //关键帧条件
+           double key_frame_min_trans; //关键帧条件
+           double map_point_erase_ratio; //地图剔除比值
 
     public:
            VisualOdometry();
@@ -50,11 +53,14 @@ class VisualOdometry
            void computeDescriptors(); 
            void featureMatching();
            void poseEstimationPnP(); 
-           void setRef3DPoints();
+           void optimizeMap();
     
            void addKeyFrame();
+           void addMapPoints();
            bool checkEstimatedPose(); 
            bool checkKeyFrame();
+
+           double getViewAngle(Frame::Ptr frame,MapPoint::Ptr point);
            
 };
 }
