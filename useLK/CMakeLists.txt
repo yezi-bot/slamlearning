@@ -1,5 +1,0 @@
-cmake_minimum_required(VERSION 3.10)
-project(useLK)
-find_package(OpenCV REQUIRED)
-add_executable(useLK useLK.cpp)
-target_link_libraries(useLK ${OpenCV_LIBS})
